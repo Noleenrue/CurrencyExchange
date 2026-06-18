@@ -1,0 +1,88 @@
+<div class="top-row ps-3 navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="/dashboard">💱 Currency Exchange</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="flex-column">
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/dashboard" Match="NavLinkMatch.All">
+                        🏠 Dashboard
+                    </NavLink>
+                </div>
+
+                <hr class="text-muted my-1 mx-3" />
+                <div class="px-3 text-muted small fw-semibold" style="font-size:0.7rem;">EXCHANGE</div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link text-success" href="/buy">🟢 Buy Currency</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link text-danger" href="/sell">🔴 Sell Currency</NavLink>
+                </div>
+
+                <hr class="text-muted my-1 mx-3" />
+                <div class="px-3 text-muted small fw-semibold" style="font-size:0.7rem;">RATES</div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/exchange-rates">📈 Current Rates</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/historical-rates">📅 Historical Rates</NavLink>
+                </div>
+
+                <hr class="text-muted my-1 mx-3" />
+                <div class="px-3 text-muted small fw-semibold" style="font-size:0.7rem;">ACCOUNT</div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/wallets">👛 Wallet Balances</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/transactions">📋 Transaction History</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/currencies">🏦 Currencies</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/profile">👤 Profile</NavLink>
+                </div>
+
+                <!-- Admin-only section -->
+                <AuthorizeView Roles="Admin" Context="adminCtx">
+                    <Authorized>
+                        <hr class="text-muted my-1 mx-3" />
+                        <div class="px-3 text-muted small fw-semibold" style="font-size:0.7rem;">ADMIN</div>
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link text-warning" href="/admin/users">👑 Manage Users</NavLink>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+
+                <hr class="text-muted my-1 mx-3" />
+                <div class="nav-item px-3 pb-2">
+                    <div class="text-muted small px-2">
+                        Logged in as:<br />
+                        <strong class="text-white">@context.User.FindFirst("firstName")?.Value
+                            @context.User.FindFirst("lastName")?.Value</strong>
+                    </div>
+                    <a href="/logout" class="btn btn-sm btn-outline-danger w-100 mt-2">Sign Out</a>
+                </div>
+            </Authorized>
+
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/login">🔐 Sign In</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/register">📝 Register</NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</div>
+

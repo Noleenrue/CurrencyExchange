@@ -1,0 +1,134 @@
+@page "/wallets"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Wallet
+@inject ApiWalletService  WalletService
+@inject ApiAuthService    AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Wallet Balances – Currency Exchange</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>👛 My Wallet Balances</h3>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="Load" disabled="@_loading">
+            ↻ Refresh
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning">⚠️ @_error</div>
+    }
+
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (_wallets.Count == 0)
+    {
+        <div class="alert alert-info">
+            No wallets found. Contact an administrator to create your PLN wallet.
+        </div>
+    }
+    else
+    {
+        <!-- Balance cards -->
+        <div class="row g-3 mb-4">
+            @foreach (var w in _wallets.OrderByDescending(w => w.CurrencyCode == "PLN"))
+            {
+                var isPln   = w.CurrencyCode == "PLN";
+                var variant = isPln ? "primary" : (w.Balance > 0 ? "success" : "secondary");
+                <div class="col-6 col-md-3">
+                    <div class="card border-@variant shadow-sm h-100">
+                        <div class="card-body text-center py-4">
+                            <div class="display-6 mb-1">@(isPln ? "🏦" : "💵")</div>
+                            <p class="text-muted small mb-1 fw-semibold text-uppercase">@w.CurrencyName</p>
+                            <h3 class="fw-bold text-@variant">@w.Balance.ToString("N4")</h3>
+                            <span class="badge bg-@variant">@w.CurrencyCode</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Detail table -->
+        <div class="card shadow-sm">
+            <div class="card-header"><strong>Wallet Details</strong></div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Wallet ID</th>
+                                <th>Currency</th>
+                                <th>Name</th>
+                                <th class="text-end">Balance</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var w in _wallets.OrderByDescending(w => w.CurrencyCode == "PLN"))
+                            {
+                                <tr>
+                                    <td class="text-muted small align-middle">#@w.Id</td>
+                                    <td class="fw-bold align-middle">@w.CurrencyCode</td>
+                                    <td class="text-muted align-middle">@w.CurrencyName</td>
+                                    <td class="text-end align-middle fw-semibold @(w.Balance > 0 ? "text-success" : "text-muted")">
+                                        @w.Balance.ToString("N4")
+                                    </td>
+                                    <td class="text-end align-middle">
+                                        @if (w.CurrencyCode != "PLN")
+                                        {
+                                            <a href="/buy?currency=@w.CurrencyCode"  class="btn btn-sm btn-outline-success me-1">Buy</a>
+                                            <a href="/sell?currency=@w.CurrencyCode" class="btn btn-sm btn-outline-danger">Sell</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<WalletDto> _wallets = new();
+    private bool    _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error   = null;
+        try
+        {
+            var userId = await AuthService.GetDomainUserIdAsync();
+            if (userId is null)
+            {
+                _error = "Could not identify your account. Please log out and in again.";
+            }
+            else
+            {
+                _wallets = await WalletService.GetByUserAsync(userId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error loading wallets: {ex.Message}";
+        }
+        _loading = false;
+    }
+}

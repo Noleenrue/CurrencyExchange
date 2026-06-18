@@ -1,0 +1,125 @@
+@page "/exchange-rates"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Nbp
+@inject ApiNbpService     NbpService
+@inject ApiAuthService    AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Current Rates – Currency Exchange</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>📈 Current Exchange Rates (NBP)</h3>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="Load" disabled="@_loading">
+            @(_loading ? "Loading…" : "↻ Refresh")
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning">
+            ⚠️ @_error
+        </div>
+    }
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            @if (_loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted">Fetching live rates from NBP…</p>
+                </div>
+            }
+            else if (_rates.Count == 0)
+            {
+                <div class="alert alert-info m-3">
+                    No rates available. NBP markets may be closed (weekend/holiday) or API is unreachable.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Code</th>
+                                <th>Currency Name</th>
+                                <th class="text-end">Bid<br/><small class="fw-normal text-muted">You sell at</small></th>
+                                <th class="text-end">Ask<br/><small class="fw-normal text-muted">You buy at</small></th>
+                                <th class="text-end">Mid Rate</th>
+                                <th class="text-end">Effective Date</th>
+                                <th class="text-end">Table</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _rates.OrderBy(r => r.CurrencyCode))
+                            {
+                                <tr>
+                                    <td class="fw-bold align-middle">@r.CurrencyCode</td>
+                                    <td class="align-middle text-muted small">@r.CurrencyName</td>
+                                    <td class="text-end align-middle text-success fw-semibold">
+                                        @(r.BidRate.HasValue ? r.BidRate.Value.ToString("F4") : "—")
+                                    </td>
+                                    <td class="text-end align-middle text-danger fw-semibold">
+                                        @(r.AskRate.HasValue ? r.AskRate.Value.ToString("F4") : "—")
+                                    </td>
+                                    <td class="text-end align-middle">@r.MidRate.ToString("F4")</td>
+                                    <td class="text-end align-middle text-muted small">@r.EffectiveDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="text-end align-middle">
+                                        <span class="badge bg-secondary">@r.TableType @r.TableNumber</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-2 text-end text-muted small">
+                    Last updated: @_fetchedAt.ToString("HH:mm:ss") UTC
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<NbpExchangeRateModel> _rates = new();
+    private bool     _loading   = true;
+    private string?  _error;
+    private DateTime _fetchedAt = DateTime.UtcNow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error   = null;
+        try
+        {
+            var resp = await NbpService.GetAllCurrentRatesAsync();
+            if (resp is null)
+            {
+                _error = "Could not retrieve rates from NBP. Try refreshing.";
+                _rates = new();
+            }
+            else
+            {
+                _rates      = resp.Rates.ToList();
+                _fetchedAt  = resp.FetchedAt;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error: {ex.Message}";
+            _rates = new();
+        }
+        _loading = false;
+    }
+}
+

@@ -1,0 +1,23 @@
+@page "/logout"
+@rendermode InteractiveServer
+@inject ApiAuthService                  AuthService
+@inject JwtAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager               Navigation
+
+<PageTitle>Signing Out…</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center" style="height:60vh">
+    <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <p class="text-muted">Signing you out…</p>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.LogoutAsync();
+        AuthStateProvider.NotifyUserLoggedOut();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+}

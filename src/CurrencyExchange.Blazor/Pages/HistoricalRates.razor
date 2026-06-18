@@ -1,0 +1,172 @@
+@page "/historical-rates"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Nbp
+@inject ApiNbpService     NbpService
+@inject ApiAuthService    AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Historical Rates – Currency Exchange</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <h3 class="mb-4">📅 Historical Exchange Rates (NBP)</h3>
+
+    <!-- Search form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header"><strong>Search Parameters</strong></div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Currency Code</label>
+                    <input class="form-control text-uppercase" @bind="_code"
+                           placeholder="e.g. USD" maxlength="10" />
+                    @if (_codeError is not null)
+                    {
+                        <div class="text-danger small">@_codeError</div>
+                    }
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">From</label>
+                    <input type="date" class="form-control" @bind="_from"
+                           max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">To</label>
+                    <input type="date" class="form-control" @bind="_to"
+                           max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                    @if (_dateError is not null)
+                    {
+                        <div class="text-danger small">@_dateError</div>
+                    }
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" @onclick="Search" disabled="@_loading">
+                        @(_loading ? "Searching…" : "🔍 Search")
+                    </button>
+                </div>
+            </div>
+            <div class="mt-2 text-muted small">
+                ℹ️ NBP API supports up to 93 days per query. Larger ranges are auto-split.
+            </div>
+        </div>
+    </div>
+
+    <!-- Error -->
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning">⚠️ @_error</div>
+    }
+
+    <!-- Results -->
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Fetching historical data…</p>
+        </div>
+    }
+    else if (_rates.Count > 0)
+    {
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between">
+                <strong>Results: @_rates.Count entries for <span class="text-primary">@_code.ToUpperInvariant()</span></strong>
+                <span class="text-muted small">@_from.ToString("yyyy-MM-dd") → @_to.ToString("yyyy-MM-dd")</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th class="text-end">Bid</th>
+                                <th class="text-end">Ask</th>
+                                <th class="text-end">Mid Rate</th>
+                                <th class="text-end">Table</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _rates.OrderByDescending(r => r.EffectiveDate))
+                            {
+                                <tr>
+                                    <td class="align-middle">@r.EffectiveDate.ToString("yyyy-MM-dd")</td>
+                                    <td class="text-end align-middle text-success">
+                                        @(r.BidRate.HasValue ? r.BidRate.Value.ToString("F4") : "—")
+                                    </td>
+                                    <td class="text-end align-middle text-danger">
+                                        @(r.AskRate.HasValue ? r.AskRate.Value.ToString("F4") : "—")
+                                    </td>
+                                    <td class="text-end align-middle fw-semibold">@r.MidRate.ToString("F4")</td>
+                                    <td class="text-end align-middle">
+                                        <span class="badge bg-secondary">@r.TableType</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_searched)
+    {
+        <div class="alert alert-info">No data found for the specified currency and date range.</div>
+    }
+</div>
+
+@code {
+    private string   _code      = "USD";
+    private DateTime _from      = DateTime.Today.AddMonths(-1);
+    private DateTime _to        = DateTime.Today;
+    private string?  _codeError;
+    private string?  _dateError;
+    private string?  _error;
+    private bool     _loading   = false;
+    private bool     _searched  = false;
+    private List<NbpExchangeRateModel> _rates = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+    }
+
+    private async Task Search()
+    {
+        _codeError = null;
+        _dateError = null;
+        _error     = null;
+
+        if (string.IsNullOrWhiteSpace(_code))
+        {
+            _codeError = "Currency code is required.";
+            return;
+        }
+        if (_from > _to)
+        {
+            _dateError = "'From' must be before 'To'.";
+            return;
+        }
+        if (_to > DateTime.Today)
+        {
+            _dateError = "'To' cannot be in the future.";
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            var from = DateOnly.FromDateTime(_from);
+            var to   = DateOnly.FromDateTime(_to);
+            var resp = await NbpService.GetHistoricalAsync(_code.Trim().ToUpperInvariant(), from, to);
+            _rates = resp?.Rates.ToList() ?? new();
+            if (_rates.Count == 0) _error = "No data returned by NBP for this range.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error fetching data: {ex.Message}";
+            _rates = new();
+        }
+        _searched = true;
+        _loading  = false;
+    }
+}

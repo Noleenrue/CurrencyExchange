@@ -1,0 +1,104 @@
+@page "/login"
+@rendermode InteractiveServer
+@using CurrencyExchange.Core.DTOs.Auth
+@inject ApiAuthService                  AuthService
+@inject JwtAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager               Navigation
+
+<PageTitle>Sign In – Currency Exchange</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-5 col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white text-center py-3">
+                    <h4 class="mb-0">💱 Currency Exchange</h4>
+                    <p class="mb-0 small opacity-75">Sign In to Your Account</p>
+                </div>
+                <div class="card-body p-4">
+
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <div class="alert alert-danger d-flex align-items-center">
+                            <span>🔒 @_errorMessage</span>
+                        </div>
+                    }
+
+                    <EditForm Model="_model" OnValidSubmit="HandleLogin">
+                        <DataAnnotationsValidator />
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Email</label>
+                            <InputText class="form-control" @bind-Value="_model.Email"
+                                       placeholder="you@example.com" autocomplete="email" />
+                            <ValidationMessage For="() => _model.Email" class="text-danger small" />
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Password</label>
+                            <InputText type="password" class="form-control"
+                                       @bind-Value="_model.Password" autocomplete="current-password" />
+                            <ValidationMessage For="() => _model.Password" class="text-danger small" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" disabled="@_loading">
+                                @if (_loading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    <span>Signing in…</span>
+                                }
+                                else
+                                {
+                                    <span>Sign In</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <hr />
+                    <p class="text-center mb-0 small">
+                        No account? <a href="/register">Create one here</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private LoginDto _model        = new();
+    private string?  _errorMessage;
+    private bool     _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If already authenticated, skip login
+        if (await AuthService.IsAuthenticatedAsync())
+            Navigation.NavigateTo(ReturnUrl ?? "/dashboard", replace: true);
+    }
+
+    private async Task HandleLogin()
+    {
+        _loading      = true;
+        _errorMessage = null;
+
+        var result = await AuthService.LoginAsync(_model);
+        _loading = false;
+
+        if (result is not null)
+        {
+            // Notify the auth state provider so AuthorizeView refreshes immediately
+            AuthStateProvider.NotifyUserAuthenticated(result.Token);
+            Navigation.NavigateTo(ReturnUrl ?? "/dashboard", replace: true);
+        }
+        else
+        {
+            _errorMessage = "Invalid email or password. Please try again.";
+        }
+    }
+}
+

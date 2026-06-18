@@ -1,0 +1,197 @@
+@page "/transactions"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.DomainTransaction
+@using CurrencyExchange.Core.Enums
+@inject ApiTransactionService TxService
+@inject ApiAuthService        AuthService
+@inject NavigationManager     Navigation
+
+<PageTitle>Transaction History – Currency Exchange</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>📋 Transaction History</h3>
+        <div class="d-flex gap-2">
+            <a href="/buy"  class="btn btn-sm btn-success">🟢 Buy</a>
+            <a href="/sell" class="btn btn-sm btn-danger">🔴 Sell</a>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="Load">↻ Refresh</button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Type</label>
+                    <select class="form-select form-select-sm" @bind="_filterType" @bind:after="ApplyFilter">
+                        <option value="">All</option>
+                        <option value="Buy">Buy</option>
+                        <option value="Sell">Sell</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">From</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_filterFrom" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">To</label>
+                    <input type="date" class="form-control form-control-sm" @bind="_filterTo" />
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-primary w-100" @onclick="ApplyFilter">Filter</button>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-sm btn-outline-secondary w-100" @onclick="ClearFilter">Clear</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning">⚠️ @_error</div>
+    }
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            @if (_loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (_filtered.Count == 0)
+            {
+                <div class="alert alert-info m-3">
+                    No transactions found@(string.IsNullOrEmpty(_filterType) ? "." : $" for type: {_filterType}.")
+                </div>
+            }
+            else
+            {
+                <!-- Summary row -->
+                <div class="row g-0 border-bottom bg-light">
+                    <div class="col-md-4 p-3 text-center border-end">
+                        <div class="text-muted small">Total Transactions</div>
+                        <div class="fs-5 fw-bold">@_filtered.Count</div>
+                    </div>
+                    <div class="col-md-4 p-3 text-center border-end">
+                        <div class="text-muted small">Buy Transactions</div>
+                        <div class="fs-5 fw-bold text-success">@_filtered.Count(t => t.TransactionType == TransactionType.Buy)</div>
+                    </div>
+                    <div class="col-md-4 p-3 text-center">
+                        <div class="text-muted small">Sell Transactions</div>
+                        <div class="fs-5 fw-bold text-danger">@_filtered.Count(t => t.TransactionType == TransactionType.Sell)</div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>#</th>
+                                <th>Date & Time</th>
+                                <th>Type</th>
+                                <th>Currency</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-end">Rate</th>
+                                <th class="text-end">PLN Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var tx in _filtered.OrderByDescending(t => t.TransactionDate))
+                            {
+                                var isBuy = tx.TransactionType == TransactionType.Buy;
+                                <tr>
+                                    <td class="text-muted small align-middle">@tx.Id</td>
+                                    <td class="align-middle small">@tx.TransactionDate.ToString("yyyy-MM-dd HH:mm")</td>
+                                    <td class="align-middle">
+                                        <span class="badge @(isBuy ? "bg-success" : "bg-danger")">
+                                            @(isBuy ? "🟢 Buy" : "🔴 Sell")
+                                        </span>
+                                    </td>
+                                    <td class="fw-bold align-middle">@tx.CurrencyCode</td>
+                                    <td class="text-end align-middle">@tx.Amount.ToString("N4")</td>
+                                    <td class="text-end align-middle text-muted">@tx.ExchangeRate.ToString("F4")</td>
+                                    <td class="text-end align-middle fw-semibold @(isBuy ? "text-danger" : "text-success")">
+                                        @((tx.Amount * tx.ExchangeRate).ToString("N2")) PLN
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="6" class="text-end fw-semibold">Net PLN (Sell − Buy):</td>
+                                <td class="text-end fw-bold @(_netPln >= 0 ? "text-success" : "text-danger")">
+                                    @_netPln.ToString("N2") PLN
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<DomainTransactionDto> _all      = new();
+    private List<DomainTransactionDto> _filtered = new();
+    private bool     _loading     = true;
+    private string?  _error;
+    private string   _filterType  = string.Empty;
+    private DateTime _filterFrom  = DateTime.Today.AddMonths(-3);
+    private DateTime _filterTo    = DateTime.Today;
+    private decimal  _netPln;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error   = null;
+        try
+        {
+            var userId = await AuthService.GetDomainUserIdAsync();
+            _all = userId.HasValue
+                ? await TxService.GetDomainByUserAsync(userId.Value)
+                : await TxService.GetAllDomainAsync();
+        }
+        catch (Exception ex) { _error = $"Could not load transactions: {ex.Message}"; }
+        ApplyFilter();
+        _loading = false;
+    }
+
+    private void ApplyFilter()
+    {
+        _filtered = _all.Where(t =>
+        {
+            if (!string.IsNullOrEmpty(_filterType)
+                && !t.TransactionType.ToString().Equals(_filterType, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return true;
+        }).ToList();
+
+        _netPln = _filtered.Sum(t =>
+        {
+            var pln = t.Amount * t.ExchangeRate;
+            return t.TransactionType == TransactionType.Sell ? pln : -pln;
+        });
+    }
+
+    private void ClearFilter()
+    {
+        _filterType = string.Empty;
+        _filterFrom = DateTime.Today.AddMonths(-3);
+        _filterTo   = DateTime.Today;
+        ApplyFilter();
+    }
+}
+

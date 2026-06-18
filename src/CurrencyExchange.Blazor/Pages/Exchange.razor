@@ -1,0 +1,90 @@
+@page "/exchange"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Currency
+@using CurrencyExchange.Core.DTOs.Transaction
+@using CurrencyExchange.Core.Enums
+@inject ApiAuthService        AuthService
+@inject ApiTransactionService TxService
+@inject ApiCurrencyService    CurrencyService
+@inject NavigationManager     Navigation
+
+<PageTitle>Buy / Sell Currency</PageTitle>
+
+<div class="container mt-4">
+    <h3>💱 Exchange Currency</h3>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert @(_success ? "alert-success" : "alert-danger")">@_message</div>
+    }
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">New Transaction</h5>
+                    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+                        <div class="mb-3">
+                            <label class="form-label">Currency</label>
+                            <InputSelect class="form-select" @bind-Value="_model.CurrencyId">
+                                <option value="0">-- Select currency --</option>
+                                @foreach (var c in _currencies)
+                                {
+                                    <option value="@c.Id">@c.Code - @c.Name</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Transaction Type</label>
+                            <InputSelect class="form-select" @bind-Value="_model.Type">
+                                <option value="@TransactionType.Buy">Buy (pay PLN, receive foreign)</option>
+                                <option value="@TransactionType.Sell">Sell (pay foreign, receive PLN)</option>
+                            </InputSelect>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Amount (foreign currency)</label>
+                            <InputNumber class="form-control" @bind-Value="_amount" min="0.01" step="0.01" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notes (optional)</label>
+                            <InputText class="form-control" @bind-Value="_notes" />
+                        </div>
+                        <button type="submit" class="btn btn-success w-100" disabled="@_loading">
+                            @(_loading ? "Processing..." : "Execute Transaction")
+                        </button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private CreateTransactionDto _model = new();
+    private List<CurrencyDto>    _currencies = new();
+    private decimal  _amount;
+    private string?  _notes;
+    private string?  _message;
+    private bool     _success;
+    private bool     _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+        _currencies = await CurrencyService.GetActiveAsync();
+    }
+
+    private async Task HandleSubmit()
+    {
+        _loading = true;
+        _message = null;
+        _model.Amount = _amount;
+        _model.Notes  = _notes;
+        var (success, error) = await TxService.ExecuteAsync(_model);
+        _loading  = false;
+        _success  = success;
+        _message  = success ? "Transaction completed successfully!" : $"Error: {error}";
+    }
+}

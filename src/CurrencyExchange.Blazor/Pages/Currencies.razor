@@ -1,0 +1,238 @@
+@page "/currencies"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Currency
+@inject ApiCurrencyService CurrencyService
+@inject ApiAuthService     AuthService
+@inject NavigationManager  Navigation
+
+<PageTitle>Currencies – Currency Exchange</PageTitle>
+
+<div class="container-fluid mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>🏦 Currency List</h3>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary me-2" @onclick="LoadCurrencies">↻ Refresh</button>
+            <button class="btn btn-sm btn-success" @onclick="OpenAdd">+ Add Currency</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_alert))
+    {
+        <div class="alert alert-@_alertType alert-dismissible">
+            @_alert
+            <button type="button" class="btn-close" @onclick="() => _alert = null"></button>
+        </div>
+    }
+
+    <!-- Add / Edit form -->
+    @if (_showForm)
+    {
+        <div class="card mb-4 border-primary shadow-sm">
+            <div class="card-header bg-primary text-white">
+                @(_editing ? "✏️ Edit Currency" : "➕ Add Currency")
+            </div>
+            <div class="card-body">
+                <EditForm Model="_form" OnValidSubmit="SaveCurrency">
+                    <DataAnnotationsValidator />
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Code</label>
+                            <InputText class="form-control text-uppercase" @bind-Value="_form.Code"
+                                       placeholder="e.g. USD" disabled="@_editing" />
+                            <ValidationMessage For="() => _form.Code" class="text-danger small" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Name</label>
+                            <InputText class="form-control" @bind-Value="_form.Name" placeholder="e.g. US Dollar" />
+                            <ValidationMessage For="() => _form.Name" class="text-danger small" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Symbol</label>
+                            <InputText class="form-control" @bind-Value="_form.Symbol" placeholder="e.g. $" />
+                            <ValidationMessage For="() => _form.Symbol" class="text-danger small" />
+                        </div>
+                        @if (_editing)
+                        {
+                            <div class="col-md-2 d-flex align-items-end">
+                                <div class="form-check">
+                                    <InputCheckbox class="form-check-input" @bind-Value="_formActive" id="activeCheck" />
+                                    <label class="form-check-label" for="activeCheck">Active</label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="mt-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" disabled="@_saving">
+                            @(_saving ? "Saving…" : "Save")
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseForm">Cancel</button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    <!-- Currency table -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            @if (_loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            }
+            else if (_currencies.Count == 0)
+            {
+                <div class="alert alert-info m-3">No currencies found.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>#</th>
+                                <th>Code</th>
+                                <th>Name</th>
+                                <th>Symbol</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in _currencies)
+                            {
+                                <tr>
+                                    <td class="text-muted small align-middle">@c.Id</td>
+                                    <td class="align-middle"><strong>@c.Code</strong></td>
+                                    <td class="align-middle">@c.Name</td>
+                                    <td class="align-middle">@c.Symbol</td>
+                                    <td class="align-middle">
+                                        <span class="badge @(c.IsActive ? "bg-success" : "bg-secondary")">
+                                            @(c.IsActive ? "Active" : "Inactive")
+                                        </span>
+                                    </td>
+                                    <td class="text-end align-middle">
+                                        <button class="btn btn-sm btn-outline-primary me-1"
+                                                @onclick="() => OpenEdit(c)">Edit</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CurrencyDto> _currencies = new();
+    private bool   _loading  = true;
+    private bool   _saving   = false;
+    private bool   _showForm = false;
+    private bool   _editing  = false;
+    private bool   _formActive = true;
+    private int    _editId   = 0;
+    private string? _alert;
+    private string  _alertType = "success";
+
+    private CreateCurrencyDto _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+        await LoadCurrencies();
+    }
+
+    private async Task LoadCurrencies()
+    {
+        _loading    = true;
+        _currencies = await CurrencyService.GetAllAsync();
+        _loading    = false;
+    }
+
+    private void OpenAdd()
+    {
+        _form      = new CreateCurrencyDto();
+        _formActive = true;
+        _editing   = false;
+        _editId    = 0;
+        _showForm  = true;
+    }
+
+    private void OpenEdit(CurrencyDto c)
+    {
+        _form      = new CreateCurrencyDto { Code = c.Code, Name = c.Name, Symbol = c.Symbol };
+        _formActive = c.IsActive;
+        _editing   = true;
+        _editId    = c.Id;
+        _showForm  = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task SaveCurrency()
+    {
+        _saving = true;
+        _alert  = null;
+        bool ok;
+
+        if (_editing)
+        {
+            var update = new UpdateCurrencyDto { Name = _form.Name, Symbol = _form.Symbol, IsActive = _formActive };
+            ok = await CurrencyService.UpdateAsync(_editId, update);
+            ShowAlert(ok, ok ? "Currency updated." : "Update failed. Check the API.");
+        }
+        else
+        {
+            ok = await CurrencyService.CreateAsync(_form);
+            ShowAlert(ok, ok ? "Currency created." : "Create failed – code may already exist.");
+        }
+
+        _saving = false;
+        if (ok) { CloseForm(); await LoadCurrencies(); }
+    }
+
+    private void ShowAlert(bool success, string msg)
+    {
+        _alert     = msg;
+        _alertType = success ? "success" : "danger";
+    }
+}
+
+
+<div class="container-fluid mt-4">
+    <h3>🏦 Supported Currencies</h3>
+
+    @if (_currencies.Count == 0)
+    {
+        <p>Loading...</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead class="table-dark">
+                <tr><th>Code</th><th>Name</th><th>Symbol</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _currencies)
+                {
+                    <tr>
+                        <td><strong>@c.Code</strong></td>
+                        <td>@c.Name</td>
+                        <td>@c.Symbol</td>
+                        <td>
+                            <span class="badge @(c.IsActive ? "bg-success" : "bg-secondary")">
+                                @(c.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>

@@ -1,0 +1,50 @@
+@page "/profile"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Auth
+@inject ApiAuthService  AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>My Profile</PageTitle>
+
+<div class="container mt-4">
+    <h3>👤 My Profile</h3>
+
+    @if (_profile is null)
+    {
+        <p>Loading...</p>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <dl class="row">
+                            <dt class="col-sm-4">Full Name</dt>
+                            <dd class="col-sm-8">@_profile.FirstName @_profile.LastName</dd>
+                            <dt class="col-sm-4">Email</dt>
+                            <dd class="col-sm-8">@_profile.Email</dd>
+                            <dt class="col-sm-4">Phone</dt>
+                            <dd class="col-sm-8">@(_profile.PhoneNumber ?? "—")</dd>
+                            <dt class="col-sm-4">Member Since</dt>
+                            <dd class="col-sm-8">@_profile.CreatedAt.ToString("MMMM dd, yyyy")</dd>
+                        </dl>
+                        <a href="/dashboard" class="btn btn-secondary">← Back to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private UserProfileDto? _profile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+        _profile = await AuthService.GetProfileAsync();
+    }
+}

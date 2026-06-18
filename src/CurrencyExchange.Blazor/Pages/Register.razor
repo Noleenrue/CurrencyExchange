@@ -1,0 +1,114 @@
+@page "/register"
+@rendermode InteractiveServer
+@using CurrencyExchange.Core.DTOs.Auth
+@inject ApiAuthService                  AuthService
+@inject JwtAuthenticationStateProvider AuthStateProvider
+@inject NavigationManager               Navigation
+
+<PageTitle>Register – Currency Exchange</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white text-center py-3">
+                    <h4 class="mb-0">Create Account</h4>
+                    <p class="mb-0 small opacity-75">Join Currency Exchange Office</p>
+                </div>
+                <div class="card-body p-4">
+
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <div class="alert alert-danger">❌ @_errorMessage</div>
+                    }
+
+                    <EditForm Model="_model" OnValidSubmit="HandleRegister">
+                        <DataAnnotationsValidator />
+
+                        <div class="row mb-3">
+                            <div class="col">
+                                <label class="form-label fw-semibold">First Name</label>
+                                <InputText class="form-control" @bind-Value="_model.FirstName"
+                                           placeholder="John" autocomplete="given-name" />
+                                <ValidationMessage For="() => _model.FirstName" class="text-danger small" />
+                            </div>
+                            <div class="col">
+                                <label class="form-label fw-semibold">Last Name</label>
+                                <InputText class="form-control" @bind-Value="_model.LastName"
+                                           placeholder="Doe" autocomplete="family-name" />
+                                <ValidationMessage For="() => _model.LastName" class="text-danger small" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Email Address</label>
+                            <InputText class="form-control" @bind-Value="_model.Email"
+                                       placeholder="john.doe@example.com" autocomplete="email" />
+                            <ValidationMessage For="() => _model.Email" class="text-danger small" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Password</label>
+                            <InputText type="password" class="form-control"
+                                       @bind-Value="_model.Password" autocomplete="new-password" />
+                            <ValidationMessage For="() => _model.Password" class="text-danger small" />
+                            <div class="form-text">Min. 8 characters, 1 uppercase, 1 digit.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Confirm Password</label>
+                            <InputText type="password" class="form-control"
+                                       @bind-Value="_model.ConfirmPassword" autocomplete="new-password" />
+                            <ValidationMessage For="() => _model.ConfirmPassword" class="text-danger small" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg" disabled="@_loading">
+                                @if (_loading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    <span>Creating account…</span>
+                                }
+                                else
+                                {
+                                    <span>Create Account</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <hr />
+                    <p class="text-center mb-0 small">
+                        Already have an account? <a href="/login">Sign in</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private RegisterDto _model        = new();
+    private string?     _errorMessage;
+    private bool        _loading;
+
+    private async Task HandleRegister()
+    {
+        _loading      = true;
+        _errorMessage = null;
+
+        var (success, token, error) = await AuthService.RegisterAndGetTokenAsync(_model);
+        _loading = false;
+
+        if (success && token is not null)
+        {
+            AuthStateProvider.NotifyUserAuthenticated(token);
+            Navigation.NavigateTo("/dashboard", replace: true);
+        }
+        else
+        {
+            _errorMessage = error ?? "Registration failed. Please check your details.";
+        }
+    }
+}
+

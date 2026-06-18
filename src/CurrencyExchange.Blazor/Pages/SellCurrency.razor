@@ -1,0 +1,219 @@
+@page "/sell"
+@rendermode InteractiveServer
+@using CurrencyExchange.Blazor.Services
+@using CurrencyExchange.Core.DTOs.Currency
+@using CurrencyExchange.Core.DTOs.Exchange
+@using CurrencyExchange.Core.DTOs.Nbp
+@using CurrencyExchange.Core.DTOs.Wallet
+@inject ApiCurrencyExchangeService ExchangeService
+@inject ApiCurrencyService         CurrencyService
+@inject ApiNbpService              NbpService
+@inject ApiWalletService           WalletService
+@inject ApiAuthService             AuthService
+@inject NavigationManager          Navigation
+
+<PageTitle>Sell Currency – Currency Exchange</PageTitle>
+
+<div class="container mt-4" style="max-width:680px;">
+
+    <div class="d-flex align-items-center mb-4">
+        <h3 class="mb-0 me-3">🔴 Sell Currency</h3>
+        <span class="badge bg-danger fs-6">Pay Foreign → Receive PLN</span>
+    </div>
+
+    <!-- Result banner -->
+    @if (_result is not null)
+    {
+        <div class="alert alert-success alert-dismissible shadow-sm">
+            <h5 class="alert-heading">✅ Transaction Successful!</h5>
+            <hr />
+            <div class="row text-center">
+                <div class="col">
+                    <div class="text-muted small">Sold</div>
+                    <div class="fs-5 fw-bold">@_result.Amount.ToString("N4") @_result.CurrencyCode</div>
+                </div>
+                <div class="col">
+                    <div class="text-muted small">PLN Received</div>
+                    <div class="fs-5 fw-bold text-success">@_result.PlnEquivalent.ToString("N2") PLN</div>
+                </div>
+                <div class="col">
+                    <div class="text-muted small">Rate Used</div>
+                    <div class="fs-5 fw-bold">@_result.ExchangeRate.ToString("F4")</div>
+                </div>
+            </div>
+            <hr />
+            <div class="d-flex justify-content-between text-muted small">
+                <span>New PLN Balance: <strong>@_result.NewPlnBalance.ToString("N2") PLN</strong></span>
+                <span>New @_result.CurrencyCode Balance: <strong>@_result.NewForeignBalance.ToString("N4")</strong></span>
+            </div>
+            <button type="button" class="btn-close" @onclick="() => _result = null"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_errorMsg))
+    {
+        <div class="alert alert-danger alert-dismissible">
+            ❌ @_errorMsg
+            <button type="button" class="btn-close" @onclick="() => _errorMsg = null"></button>
+        </div>
+    }
+
+    <!-- Wallet balance for selected currency -->
+    @if (_liveRate is not null && _selectedWallet is not null)
+    {
+        <div class="alert alert-info d-flex align-items-center mb-3">
+            <span class="me-3">👛 Available:</span>
+            <strong class="fs-5">@_selectedWallet.Balance.ToString("N4") @_selectedCode</strong>
+            <span class="ms-3 text-muted">|</span>
+            <span class="ms-3 me-2">📊 NBP Bid Rate:</span>
+            <strong class="text-success fs-5">@((_liveRate.BidRate ?? _liveRate.MidRate).ToString("F4")) PLN</strong>
+        </div>
+        @if (_amount > 0)
+        {
+            var estPln = _amount * (_liveRate.BidRate ?? _liveRate.MidRate);
+            <div class="alert alert-light border mb-3">
+                💰 You will receive approximately: <strong class="text-success">@estPln.ToString("N2") PLN</strong>
+                for <strong>@_amount.ToString("N4") @_selectedCode</strong>
+            </div>
+        }
+    }
+
+    <!-- Sell form -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <EditForm Model="_request" OnValidSubmit="ExecuteSell">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Currency to Sell</label>
+                    <InputSelect class="form-select" @bind-Value="_selectedCode"
+                                 @bind-Value:after="OnCurrencyChanged">
+                        <option value="">— Select a currency —</option>
+                        @foreach (var w in _wallets.Where(w => w.CurrencyCode != "PLN" && w.Balance > 0))
+                        {
+                            <option value="@w.CurrencyCode">@w.CurrencyCode — Balance: @w.Balance.ToString("N4")</option>
+                        }
+                    </InputSelect>
+                    @if (!_wallets.Any(w => w.CurrencyCode != "PLN" && w.Balance > 0) && !_loadingWallets)
+                    {
+                        <div class="text-muted small mt-1">No foreign currency balances to sell.</div>
+                    }
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Amount to Sell</label>
+                    <div class="input-group">
+                        <InputNumber class="form-control" @bind-Value="_amount"
+                                     @bind-Value:after="StateHasChanged"
+                                     min="0.000001" step="0.01" placeholder="0.00" />
+                        <span class="input-group-text">@_selectedCode</span>
+                    </div>
+                    @if (_selectedWallet is not null && _amount > _selectedWallet.Balance)
+                    {
+                        <div class="text-danger small">
+                            Insufficient balance (available: @_selectedWallet.Balance.ToString("N4"))
+                        </div>
+                    }
+                    <ValidationMessage For="() => _request.Amount" class="text-danger small" />
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-danger btn-lg"
+                            disabled="@(_submitting || string.IsNullOrEmpty(_selectedCode)
+                                        || _amount <= 0
+                                        || (_selectedWallet is not null && _amount > _selectedWallet.Balance))">
+                        @if (_submitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Processing…</span>
+                        }
+                        else
+                        {
+                            <span>✅ Confirm Sale</span>
+                        }
+                    </button>
+                    <a href="/wallets" class="btn btn-outline-secondary">← Back to Wallets</a>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "currency")]
+    public string? PreselectedCurrency { get; set; }
+
+    private SellCurrencyRequest     _request       = new();
+    private List<WalletDto>         _wallets       = new();
+    private NbpExchangeRateModel?   _liveRate;
+    private WalletDto?              _selectedWallet;
+    private ExchangeResult?         _result;
+    private string?                 _errorMsg;
+    private string                  _selectedCode  = string.Empty;
+    private decimal                 _amount;
+    private bool                    _submitting    = false;
+    private bool                    _loadingWallets = true;
+    private int?                    _domainUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await AuthService.IsAuthenticatedAsync()) { Navigation.NavigateTo("/login"); return; }
+        await AuthService.SetAuthHeaderAsync();
+
+        _domainUserId = await AuthService.GetDomainUserIdAsync();
+        if (_domainUserId.HasValue)
+            _wallets = await WalletService.GetByUserAsync(_domainUserId.Value);
+        _loadingWallets = false;
+
+        if (!string.IsNullOrEmpty(PreselectedCurrency))
+        {
+            _selectedCode = PreselectedCurrency.ToUpperInvariant();
+            await OnCurrencyChanged();
+        }
+    }
+
+    private async Task OnCurrencyChanged()
+    {
+        _liveRate       = null;
+        _selectedWallet = null;
+        if (!string.IsNullOrEmpty(_selectedCode))
+        {
+            _selectedWallet = _wallets.FirstOrDefault(w => w.CurrencyCode == _selectedCode);
+            _liveRate       = await NbpService.GetCurrentRateAsync(_selectedCode);
+        }
+    }
+
+    private async Task ExecuteSell()
+    {
+        if (_domainUserId is null)
+        {
+            _errorMsg = "Cannot identify your account. Please log out and sign in again.";
+            return;
+        }
+
+        _submitting = true;
+        _result     = null;
+        _errorMsg   = null;
+
+        _request.UserId       = _domainUserId.Value;
+        _request.CurrencyCode = _selectedCode;
+        _request.Amount       = _amount;
+
+        var (success, result, error) = await ExchangeService.SellAsync(_request);
+        _submitting = false;
+
+        if (success)
+        {
+            _result = result;
+            // Refresh wallet balances
+            if (_domainUserId.HasValue)
+                _wallets = await WalletService.GetByUserAsync(_domainUserId.Value);
+            _selectedWallet = _wallets.FirstOrDefault(w => w.CurrencyCode == _selectedCode);
+            _amount = 0;
+        }
+        else
+        {
+            _errorMsg = error ?? "Transaction failed.";
+        }
+    }
+}
